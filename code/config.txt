@@ -1,0 +1,30 @@
+# Configuration file for Midas system
+
+[global]
+trainingD_path = /home/mike/GitRepos/Midas/data/uniform/annotated/cg-lit/train
+testD_path = /home/mike/GitRepos/Midas/data/uniform/annotated/cg-lit/dev
+outputD_path = /home/mike/GitRepos/Midas/data/uniform/annotated/cg-lit/silver
+WS = /home/mike/GitRepos/Midas/workspace
+nr_folds = 5
+
+[gazetteer]
+use_gazetteer = True
+path2gazetteers = /home/mike/GitRepos/Midas/data/etc/gazetteers.txt
+
+[tokenizer]
+tokenize = True
+tokenizer_context = 1
+
+[tagger]
+left_context = 2
+right_context = 1
+min_lem_freq = 25
+min_tok_freq = 25
+
+[levenshtein]
+nearest_lev_hyperballs = 2
+max_lev_dist = 2
+
+[alignator]
+alignment_context = 5
+max_align_dist = 2
