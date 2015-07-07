@@ -1,3 +1,5 @@
+[*very much* UNDER DEVELOPMENT]
+
 Midas
 =====
 
@@ -38,11 +40,24 @@ ende isidorus dar bi
 nomic iv dese bi namen
 ```
 
+### Running midas
+Midas can be used in the following modes: "tag", "test" and "train". Its configuration and hyperparameters can be set using a standard config file. Previously trained models can be saved via pickling and reused for tagging or testing. Run midas from the command line:
+
+```
+>>> python midas.py train config.txt my_model
+>>> python midas.py tag config.txt my_model
+>>> python midas.py test config.txt my_model
+```
+
+To enable GPU acceleration, add something like:
+```
+>>> THEANO_FLAGS=mode=FAST_RUN,device=gpu,floatX=float32 python midas.py train config.txt my_model
+```
+
+
 ### Dependencies
 Midas mainly depends on scikit-learn, keras (and thus theano). If you want to use theano's support GPU-acceleration (which comes highly recommended for larger data sets), you will have to properly install Nvidia’s CUDA.
 
-To run midas on the GPU, type:
 
->>> 
 
 
