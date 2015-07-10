@@ -1,0 +1,45 @@
+
+
+def parse(import ConfigParser):
+"""
+# parse the configuration file:
+config = ConfigParser.ConfigParser()
+config.read(config_path)
+# global options:
+trainingD_path = config.get("global", "trainingD_path")
+if not testD_path and not outputD_path: # only load these params from config.txt if they have not been specified on the command line
+    testD_path = config.get("global", "testD_path")
+    outputD_path = config.get("global", "outputD_path")
+WS = config.get("global", "WS")
+nr_folds = config.getint("global", "nr_folds")
+# gazetteer options:
+use_gazetteer = config.getboolean("gazetteer", "use_gazetteer")
+path2gazetteers = config.get("gazetteer", "path2gazetteers")
+# tokenizer options:
+tokenize = config.getboolean("tokenizer", "tokenize")
+tokenizer_context = config.getint("tokenizer", "tokenizer_context")
+# tagger options:
+left_context = config.getint("tagger", "left_context")
+right_context = config.getint("tagger", "right_context")
+min_lem_freq = config.getint("tagger", "min_lem_freq")
+min_tok_freq = config.getint("tagger", "min_tok_freq")
+# levenshtein options:
+nearest_lev_hyperballs = config.getint("levenshtein", "nearest_lev_hyperballs")
+max_lev_dist = config.getint("levenshtein", "max_lev_dist")
+# alignator options:
+alignment_context = config.getint("alignator", "alignment_context")
+max_align_dist = config.getint("alignator", "max_align_dist")
+#########################################################
+# load the gazetteer if necessary:
+gazetteer = None
+if use_gazetteer:
+    gazetteer = Gazetteer(path2gazetteers=path2gazetteers)
+# determine path where to save the model dir:
+if not os.path.isdir(WS):
+  os.mkdir(WS)
+if mode == "crossval":
+  model_name = "crossval"
+# expand the path using the model name
+WS = os.sep.join([WS,model_name,""])
+
+"""
