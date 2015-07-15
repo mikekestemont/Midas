@@ -12,8 +12,12 @@ import cmd_line
 import datasets
 
 import tokenize_stuff
+import tagger_stuff
+import utils
 
-BATCH_SIZE = 30
+from keras.utils import np_utils
+
+BATCH_SIZE = 50
 
 def main():
     print("::: midas started :::")
@@ -43,7 +47,7 @@ def main():
 
         train_tokens, train_postags, train_lemmas = \
             datasets.load_annotated_data_dir(data_dir = os.path.abspath(param_dict["train_dir"]),
-                                         nb_instances = 2000)
+                                         nb_instances = 150000)
 
         if param_dict["tokenize"]:
             left_X, right_X, concat_y, char_vector_dict = \
@@ -53,13 +57,12 @@ def main():
                                          nb_right_tokens = param_dict["tok_nb_right_tokens"],
                                          right_char_len = param_dict["tok_right_char_len"])
             
-            tokenizer = tokenize_stuff.build_tokenizer(nb_filters = 1000,
+            tokenizer = tokenize_stuff.build_tokenizer(nb_filters = 2500,
                                         filter_length = 3,
-                                        batch_size = 50,
                                         char_vector_dict = char_vector_dict)
 
-            tokenizer.fit([left_X, right_X], concat_y, validation_split = 0.20,
-                            batch_size = BATCH_SIZE, nb_epoch = param_dict["tok_nb_epochs"])
+            tokenizer.fit([left_X, right_X], concat_y, validation_split = 0.20, show_accuracy=True,
+                            batch_size = BATCH_SIZE, nb_epoch = param_dict["tok_nb_epochs"], class_weight={0:1, 1:100})
 
             # save relevant objects:
             tokenizer.save_weights("../models/"+model_name+"/tokenizer.model_weights",
@@ -71,7 +74,31 @@ def main():
             pass
 
         if param_dict["lemmatize"]:
-            pass
+
+            train_lemmas = [lem for lem in train_lemmas if lem not in ("@", "$")]
+
+            lemma_encoder, train_lemmas_y = utils.encode_labels(train_lemmas)
+            print len(train_lemmas_y)
+
+            labels_y = np_utils.to_categorical(train_lemmas_y, len(lemma_encoder.classes_))
+
+            left_X, tokens_X, right_X, char_vector_dict = tagger_stuff.vectorize(tokens = train_tokens,
+                                        std_token_len = param_dict["lemma_std_len_token"],
+                                        nb_left_tokens = param_dict["lemma_nb_left_tokens"],
+                                        left_char_len = param_dict["lemma_left_char_len"],
+                                        nb_right_tokens = param_dict["lemma_nb_right_tokens"],
+                                        right_char_len = param_dict["lemma_right_char_len"],
+                                        )
+            print(tokens_X.shape)
+            lemmatizer = tagger_stuff.build_lemmatizer(nb_filters = 500,
+                                        filter_length = 3,
+                                        std_token_len = param_dict["lemma_std_len_token"],
+                                        char_vector_dict = char_vector_dict,
+                                        nb_lemmas = len(lemma_encoder.classes_))
+            lemmatizer.fit([left_X, tokens_X, right_X], labels_y, show_accuracy=True,
+                            batch_size = BATCH_SIZE, nb_epoch = param_dict["lemma_nb_epochs"])
+            #lemmatizer.fit(tokens_X, labels_y, show_accuracy=True,
+            #                batch_size = 50, nb_epoch = param_dict["lemma_nb_epochs"])
 
     elif param_dict["mode"] == "test":
         
@@ -79,7 +106,7 @@ def main():
 
         test_tokens, test_postags, test_lemmas = \
             datasets.load_annotated_data_dir(data_dir = os.path.abspath(param_dict["input_dir"]),
-                                         nb_instances = 2000)
+                                         nb_instances = 5000)
         char_vector_dict = pickle.load(open("../models/"+model_name+"/char_vector_dict.p", "rb"))
         left_X, right_X, concat_y, _ = \
                 tokenize_stuff.vectorize(tokens = test_tokens,
@@ -88,12 +115,13 @@ def main():
                                          nb_right_tokens = param_dict["tok_nb_right_tokens"],
                                          right_char_len = param_dict["tok_right_char_len"],
                                          char_vector_dict = char_vector_dict)
-        tokenizer = tokenize_stuff.build_tokenizer(nb_filters = 1000,
+        tokenizer = tokenize_stuff.build_tokenizer(nb_filters = 250,
                                         filter_length = 3,
-                                        batch_size = 50,
                                         char_vector_dict = char_vector_dict)
         tokenizer.load_weights("../models/"+model_name+"/tokenizer.model_weights")
-        tokenizer.predict([left_X, right_X], batch_size = BATCH_SIZE)
+        preds = tokenizer.predict_classes([left_X, right_X], batch_size = 1000)
+        for item in zip(tokenize_stuff.unconcatenate_tokens(test_tokens)[0], preds):
+            print(item)
         
         
 

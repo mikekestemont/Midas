@@ -11,8 +11,7 @@ from keras.layers.convolutional import Convolution1D, MaxPooling1D
 
 from utils import get_char_vector_dict, vectorize_charseq
 
-def vectorize(tokens, nb_left_tokens, left_char_len,
-               nb_right_tokens, right_char_len, char_vector_dict=None):
+def unconcatenate_tokens(tokens):
     # unconcatenate the tokens
     unconcat_tokens, concat_y = [], []
     for token in tokens:
@@ -30,8 +29,15 @@ def vectorize(tokens, nb_left_tokens, left_char_len,
         else:
             unconcat_tokens.append(token)
             concat_y.append(0)
-    assert len(concat_y) == len(unconcat_tokens)
+    return unconcat_tokens, concat_y
+
+def vectorize(tokens, nb_left_tokens, left_char_len,
+               nb_right_tokens, right_char_len, char_vector_dict=None):
+
+    unconcat_tokens, concat_y = unconcatenate_tokens(tokens)
     
+    # for training, we create a char_vector_dict, during testing/tagging
+    # we use a previously created one to ensure compatibility:
     if not char_vector_dict:
         char_vector_dict = get_char_vector_dict(unconcat_tokens)
 
@@ -48,7 +54,7 @@ def vectorize(tokens, nb_left_tokens, left_char_len,
                              if token_idx+t < len(unconcat_tokens)])
         right_X.append(vectorize_charseq(right_str,
                             char_vector_dict, right_char_len))
-    
+
     assert len(left_X) == len(right_X) == len(concat_y)
     left_X = np.asarray(left_X, dtype="int8")
     right_X = np.asarray(right_X, dtype="int8")
@@ -56,7 +62,6 @@ def vectorize(tokens, nb_left_tokens, left_char_len,
 
 def build_tokenizer(nb_filters = 1000,
                     filter_length = 3,
-                    batch_size = 50,
                     char_vector_dict = {}):
 
     left_model = Sequential()
@@ -68,8 +73,8 @@ def build_tokenizer(nb_filters = 1000,
                             subsample_length=1,
                             ))
     left_model.add(MaxPooling1D(pool_length=2))
-    left_model.add(LSTM(nb_filters/2, 250))
-    left_model.add(Dropout(0.5))
+    left_model.add(LSTM(nb_filters/2, 50))
+    #left_model.add(Dropout(0.5))
     left_model.add(Activation('relu'))
 
     right_model = Sequential()
@@ -81,17 +86,17 @@ def build_tokenizer(nb_filters = 1000,
                             subsample_length=1,
                             ))
     right_model.add(MaxPooling1D(pool_length=2))
-    right_model.add(LSTM(nb_filters/2, 250))
-    right_model.add(Dropout(0.5))
+    right_model.add(LSTM(nb_filters/2, 50))
+    #right_model.add(Dropout(0.5))
     right_model.add(Activation('relu'))
     
     model = Sequential()
     model.add(Merge([left_model, right_model], mode='concat'))
-    model.add(Dense(500, 1))
+    model.add(Dense(100, 1))
     model.add(Activation('sigmoid'))
 
-    rms = RMSprop(clipnorm=0.3)
-    model.compile(loss='binary_crossentropy', optimizer=rms, class_mode="binary")
+    rms = RMSprop(clipnorm=0.1)
+    model.compile(loss='binary_crossentropy', optimizer="SGD", class_mode="binary")
     return model
 
 

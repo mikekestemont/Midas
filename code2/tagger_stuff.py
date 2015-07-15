@@ -1,51 +1,110 @@
 import numpy as np
 
-from sklearn.preprocessing import LabelEncoder
+from utils import get_char_vector_dict, encode_labels, vectorize_charseq
 
 from keras.preprocessing import sequence
 from keras.utils import np_utils
+from keras.optimizers import Adagrad
 from keras.models import Sequential
 from keras.layers.core import Dense, Dropout, Activation, Flatten, Merge
 from keras.layers.embeddings import Embedding
 from keras.layers.recurrent import LSTM, GRU
 from keras.layers.convolutional import Convolution1D, MaxPooling1D
 
-def vectorize_tokens(tokens, char_vector_dict, std_token_len,
-                     nb_left_tokens, left_char_len,
-                     nb_right_tokens, right_char_len,
-                     ):
+def vectorize(tokens, std_token_len,
+              nb_left_tokens, left_char_len,
+              nb_right_tokens, right_char_len,
+              char_vector_dict = {},
+              ):
+    
+    if not char_vector_dict:
+        char_vector_dict = get_char_vector_dict(tokens)
+
     left_X, tokens_X, right_X = [], [], []
+
     for token_idx, token in enumerate(tokens):
-        # ignore boundari markers:
+        # ignore boundary markers:
         if token in ("@", "$"):
             continue
+
         # vectorize target token:
-        tokens_X.append(vectorize_charseq(token,
-                            char_vector_dict, std_token_len))
+        tokens_X.append(vectorize_charseq(token, char_vector_dict, std_token_len))
         # vectorize left context:
-        left_str = " ".join([tokens[token_idx-(t+1)] for t in range(nb_left_tokens)
-                             if token_idx-(t+1) >= 0])
-        left_X.append(vectorize_charseq(left_str,
-                            char_vector_dict, left_char_len))
+
+        left_context = [tokens[token_idx-(t+1)] for t in range(nb_left_tokens)
+                             if token_idx-(t+1) >= 0][::-1]
+        left_str = " ".join(left_context)
+        left_X.append(vectorize_charseq(left_str, char_vector_dict, left_char_len))
+
         # vectorize right context:
         right_str = " ".join([tokens[token_idx+t+1] for t in range(nb_right_tokens)
                              if token_idx+t+1 < len(tokens)])
-        right_X.append(vectorize_charseq(right_str,
-                            char_vector_dict, right_char_len))
-    assert len(tokens_X) == len(left_X)
-    assert len(tokens_X) == len(right_X)
+        right_X.append(vectorize_charseq(right_str, char_vector_dict, right_char_len))
+    
     tokens_X = np.asarray(tokens_X, dtype="int8")
     left_X = np.asarray(left_X, dtype="int8")
     right_X = np.asarray(right_X, dtype="int8")
-    return left_X, tokens_X, right_X
 
-def encode_labels(labels):
-    label_encoder = LabelEncoder()
-    labels_y = label_encoder.fit_transform(labels)
-    labels_y = np_utils.to_categorical(labels_y, len(label_encoder.classes_))
-    return label_encoder, labels_y
+    return left_X, tokens_X, right_X, char_vector_dict
 
+def build_lemmatizer(nb_filters,
+                    std_token_len,
+                    filter_length,
+                    char_vector_dict,
+                    nb_lemmas):
+    
+    token_model = Sequential()
+    token_model.add(Convolution1D(input_dim=len(char_vector_dict),
+                            nb_filter=nb_filters,
+                            filter_length=filter_length,
+                            activation="relu",
+                            border_mode="valid",
+                            subsample_length=1,
+                            ))
+    token_model.add(MaxPooling1D(pool_length=2))
+    token_model.add(Flatten())
+    token_model.add(Dropout(0.5))
+    output_size =  nb_filters * (((std_token_len-filter_length)/1)+1)/2
+    token_model.add(Dense(output_size, 500))
+    token_model.add(Dropout(0.5))
+    token_model.add(Activation('relu'))
 
+    left_model = Sequential()
+    left_model.add(Convolution1D(input_dim=len(char_vector_dict),
+                            nb_filter=nb_filters,
+                            filter_length=filter_length,
+                            activation="relu",
+                            border_mode="valid",
+                            subsample_length=1,
+                            ))
+    left_model.add(MaxPooling1D(pool_length=2))
+    left_model.add(LSTM(nb_filters/2, 500))
+    left_model.add(Dropout(0.5))
+    left_model.add(Activation('relu'))
+
+    right_model = Sequential()
+    right_model.add(Convolution1D(input_dim=len(char_vector_dict),
+                            nb_filter=nb_filters,
+                            filter_length=filter_length,
+                            activation="relu",
+                            border_mode="valid",
+                            subsample_length=1,
+                            ))
+    right_model.add(MaxPooling1D(pool_length=2))
+    right_model.add(LSTM(nb_filters/2, 500))
+    right_model.add(Dropout(0.5))
+    right_model.add(Activation('relu'))
+
+    model = Sequential()
+    model.add(Merge([left_model, token_model, right_model], mode='concat'))
+    model.add(Dense(1500, nb_lemmas))
+    model.add(Activation('softmax'))
+
+    #adagrad = Adagrad()
+    model.compile(loss='categorical_crossentropy', optimizer="adagrad")
+    return model
+
+"""
 def main():
     # define hyperparams:
     NB_INSTANCES = 50000
@@ -136,6 +195,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+"""
 
 
 

@@ -1,35 +1,35 @@
 # Configuration file for Midas system
 
 [global]
-train_dir = ../data/uniform/annotated/cg-lit/train
-input_dir = ../data/uniform/annotated/cg-lit/dev
+train_dir = ../data/uniform/annotated/crm-adelheid/train
+input_dir = ../data/uniform/annotated/crm-adelheid/dev
 output_dir = /home/mike/GitRepos/Midas/data/uniform/annotated/cg-lit/silver
 model_name = first_model
-mode = test
+mode = train
 
 [tokenizer]
-tokenize = True
-tok_nb_left_tokens = 2
+tokenize = False
+tok_nb_left_tokens = 3
 tok_left_char_len = 15
-tok_nb_right_tokens = 2
+tok_nb_right_tokens = 1
 tok_right_char_len = 15
 tok_nb_epochs = 1
 
 [postagger]
 postag = True
 pos_nb_left_tokens = 2
-pos_left_char_len = 15
+pos_left_char_len = 12
 pos_nb_right_tokens = 2
-pos_right_char_len = 15
-pos_nb_epochs = 30
+pos_right_char_len = 12
+pos_nb_epochs = 5
 pos_architecture = A
 
 [lemmatizer]
 lemmatize = True
+lemma_std_len_token = 25
 lemma_nb_left_tokens = 2
-lemma_left_char_len = 15
-lemma_nb_right_tokens = 2
-lemma_right_char_len = 15
-lemma_nb_epochs = 30
-lemma_architecture = A
+lemma_left_char_len = 30
+lemma_nb_right_tokens = 1
+lemma_right_char_len = 20
+lemma_nb_epochs = 50
 
