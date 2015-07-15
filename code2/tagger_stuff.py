@@ -5,7 +5,7 @@ from utils import get_char_vector_dict, encode_labels, vectorize_charseq
 from keras.preprocessing import sequence
 from keras.utils import np_utils
 from keras.optimizers import Adagrad
-from keras.models import Sequential
+from keras.models import Sequential, Graph
 from keras.layers.core import Dense, Dropout, Activation, Flatten, Merge
 from keras.layers.embeddings import Embedding
 from keras.layers.recurrent import LSTM, GRU
@@ -51,6 +51,102 @@ def build_lemmatizer(nb_filters,
                     std_token_len,
                     filter_length,
                     char_vector_dict,
+                    nb_lemmas,
+                    nb_postags,
+                    dense_dims):
+    m = Graph()
+
+    # specify inputs:
+    m.add_input(name='left_input', ndim=3)
+    m.add_input(name='token_input', ndim=3)
+    m.add_input(name='right_input', ndim=3)
+
+    # add left context nodes:
+    m.add_node(Convolution1D(input_dim=len(char_vector_dict),
+                            nb_filter=nb_filters,
+                            filter_length=filter_length,
+                            activation="relu",
+                            border_mode="valid",
+                            subsample_length=1), 
+                   name="left_conv1", input='left_input')
+    m.add_node(MaxPooling1D(pool_length=2),
+                   name="left_pool1", input="left_conv1")
+    m.add_node(LSTM(nb_filters/2, dense_dims),
+                   name='left_lstm1', input='left_pool1')
+    m.add_node(Dropout(0.5),
+                   name='left_dropout1', input='left_lstm1')
+    m.add_node(Activation('relu'),
+                   name='left_relu1', input='left_dropout1')
+
+    # add right context nodes:
+    m.add_node(Convolution1D(input_dim=len(char_vector_dict),
+                            nb_filter=nb_filters,
+                            filter_length=filter_length,
+                            activation="relu",
+                            border_mode="valid",
+                            subsample_length=1), 
+                   name="right_conv1", input='right_input')
+    m.add_node(MaxPooling1D(pool_length=2),
+                   name="right_pool1", input="right_conv1")
+    m.add_node(LSTM(nb_filters/2, dense_dims),
+                   name='right_lstm1', input='right_pool1')
+    m.add_node(Dropout(0.5),
+                   name='right_dropout1', input='right_lstm1')
+    m.add_node(Activation('relu'),
+                   name='right_relu1', input='right_dropout1')
+
+    # add target token nodes:
+    m.add_node(Convolution1D(input_dim=len(char_vector_dict),
+                            nb_filter=nb_filters,
+                            filter_length=filter_length,
+                            activation="relu",
+                            border_mode="valid",
+                            subsample_length=1), 
+                   name="token_conv1", input='token_input')
+    m.add_node(MaxPooling1D(pool_length=2),
+                   name="token_pool1", input="token_conv1")
+    m.add_node(Flatten(),
+                   name="token_flatten1", input="token_pool1")
+    m.add_node(Dropout(0.5),
+                   name="token_dropout1", input="token_flatten1")
+    output_size =  nb_filters * (((std_token_len-filter_length)/1)+1)/2
+    m.add_node(Dense(output_size, dense_dims),
+                   name="token_dense1", input="token_dropout1")
+    m.add_node(Dropout(0.5),
+                   name="token_dropout2", input="token_dense1")
+    m.add_node(Activation('relu'),
+                   name='token_relu1', input='token_dropout2')
+
+    # add lemma nodes:
+    m.add_node(Dense(3*dense_dims, nb_lemmas),
+                   name='lemma_dense',
+                   inputs=['left_relu1', 'token_dropout2', 'right_relu1'],
+                   merge_mode='concat')
+    m.add_node(Activation('softmax'),
+                   name='lemma_softmax', input='lemma_dense')
+    m.add_output(name='lemma_output', input='lemma_softmax')
+
+    # add postag nodes:
+    m.add_node(Dense(3*dense_dims, nb_postags),
+                   name='pos_dense',
+                   inputs=['left_relu1', 'token_dropout2', 'right_relu1'],
+                   merge_mode='concat')
+    m.add_node(Activation('softmax'),
+                   name='pos_softmax', input='pos_dense')
+    m.add_output(name='pos_output', input='pos_softmax')
+    
+
+    m.compile(optimizer='adagrad',
+              loss={'lemma_output':'categorical_crossentropy',
+                    'pos_output':'categorical_crossentropy'})
+
+    return m
+
+
+def build_lemmatizer_sequential(nb_filters,
+                    std_token_len,
+                    filter_length,
+                    char_vector_dict,
                     nb_lemmas):
     
     token_model = Sequential()
@@ -68,6 +164,7 @@ def build_lemmatizer(nb_filters,
     token_model.add(Dense(output_size, 500))
     token_model.add(Dropout(0.5))
     token_model.add(Activation('relu'))
+    
 
     left_model = Sequential()
     left_model.add(Convolution1D(input_dim=len(char_vector_dict),
@@ -103,105 +200,3 @@ def build_lemmatizer(nb_filters,
     #adagrad = Adagrad()
     model.compile(loss='categorical_crossentropy', optimizer="adagrad")
     return model
-
-"""
-def main():
-    # define hyperparams:
-    NB_INSTANCES = 50000
-    STD_TOKEN_LEN = 12
-
-    NB_LEFT_TOKENS = 2
-    LEFT_CHAR_LEN = 21
-
-    NB_RIGHT_TOKENS = 1
-    RIGHT_CHAR_LEN = 10
-
-    NB_FILTERS = 1000
-    FILTER_LENGTH = 3
-
-    BATCH_SIZE = 50
-
-    tokens, postags, lemmas = load_data(file_path="../data/uniform/annotated/relig/train/relig_train.3col",
-                                        nb_instances=NB_INSTANCES)
-
-
-    char_vector_dict = get_char_vector_dict(tokens)
-    
-    
-    lemmas = [lemma for lemma in lemmas if lemma not in ("$", "@")]
-    lemmas_encoder, lemmas_y = encode_labels(lemmas)
-
-    postags = [pos for pos in postags if pos not in ("$", "@")]
-    pos_encoder, pos_y = encode_labels(postags)
-    
-    
-    left_X, tokens_X, right_X = vectorize_tokens(tokens, char_vector_dict, STD_TOKEN_LEN,
-                                        NB_LEFT_TOKENS, LEFT_CHAR_LEN,
-                                        NB_RIGHT_TOKENS, RIGHT_CHAR_LEN,
-                                        )
-    print(tokens_X.shape)
-    print(lemmas_y.shape)
-
-    token_model = Sequential()
-    token_model.add(Convolution1D(input_dim=len(char_vector_dict),
-                            nb_filter=NB_FILTERS,
-                            filter_length=FILTER_LENGTH,
-                            activation="relu",
-                            border_mode="valid",
-                            subsample_length=1,
-                            ))
-    token_model.add(MaxPooling1D(pool_length=2))
-    token_model.add(Flatten())
-    output_size = NB_FILTERS * (((STD_TOKEN_LEN-FILTER_LENGTH)/1)+1)/2
-    token_model.add(Dense(output_size, 250))
-    token_model.add(Dropout(0.5))
-    token_model.add(Activation('relu'))
-
-    left_model = Sequential()
-    left_model.add(Convolution1D(input_dim=len(char_vector_dict),
-                            nb_filter=NB_FILTERS,
-                            filter_length=FILTER_LENGTH,
-                            activation="relu",
-                            border_mode="valid",
-                            subsample_length=1,
-                            ))
-    left_model.add(MaxPooling1D(pool_length=2))
-    left_model.add(LSTM(NB_FILTERS/2, 250))
-    left_model.add(Dropout(0.5))
-    left_model.add(Activation('relu'))
-
-    right_model = Sequential()
-    right_model.add(Convolution1D(input_dim=len(char_vector_dict),
-                            nb_filter=NB_FILTERS,
-                            filter_length=FILTER_LENGTH,
-                            activation="relu",
-                            border_mode="valid",
-                            subsample_length=1,
-                            ))
-    right_model.add(MaxPooling1D(pool_length=2))
-    right_model.add(LSTM(NB_FILTERS/2, 250))
-    right_model.add(Dropout(0.5))
-    right_model.add(Activation('relu'))
-
-    model = Sequential()
-    model.add(Merge([left_model, token_model, right_model], mode='concat'))
-    model.add(Dense(750, len(lemmas_encoder.classes_)))
-    model.add(Activation('softmax'))
-
-    model.compile(loss='categorical_crossentropy', optimizer='adadelta')
-    model.fit([left_X, tokens_X, right_X], lemmas_y, validation_split=0,
-               batch_size=BATCH_SIZE, nb_epoch=50,
-               show_accuracy=True, verbose=1)
-
-if __name__ == "__main__":
-    main()
-"""
-
-
-
-
-
-
-
-
-

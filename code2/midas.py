@@ -3,6 +3,8 @@
        >>> python midas.py config.txt
 """
 
+from __future__ import print_function
+
 import sys
 import os
 import shutil
@@ -76,11 +78,16 @@ def main():
         if param_dict["lemmatize"]:
 
             train_lemmas = [lem for lem in train_lemmas if lem not in ("@", "$")]
+            train_postags = [pos for pos in train_postags if pos not in ("@", "$")]
 
             lemma_encoder, train_lemmas_y = utils.encode_labels(train_lemmas)
-            print len(train_lemmas_y)
+            pos_encoder, train_pos_y = utils.encode_labels(train_postags)
 
-            labels_y = np_utils.to_categorical(train_lemmas_y, len(lemma_encoder.classes_))
+            print(len(train_lemmas_y))
+            print(len(train_pos_y))
+
+            lemma_labels_y = np_utils.to_categorical(train_lemmas_y, len(lemma_encoder.classes_))
+            pos_labels_y = np_utils.to_categorical(train_pos_y, len(pos_encoder.classes_))
 
             left_X, tokens_X, right_X, char_vector_dict = tagger_stuff.vectorize(tokens = train_tokens,
                                         std_token_len = param_dict["lemma_std_len_token"],
@@ -90,13 +97,38 @@ def main():
                                         right_char_len = param_dict["lemma_right_char_len"],
                                         )
             print(tokens_X.shape)
-            lemmatizer = tagger_stuff.build_lemmatizer(nb_filters = 500,
+
+            lemmatizer = tagger_stuff.build_lemmatizer(nb_filters = 1000,
                                         filter_length = 3,
                                         std_token_len = param_dict["lemma_std_len_token"],
                                         char_vector_dict = char_vector_dict,
-                                        nb_lemmas = len(lemma_encoder.classes_))
-            lemmatizer.fit([left_X, tokens_X, right_X], labels_y, show_accuracy=True,
-                            batch_size = BATCH_SIZE, nb_epoch = param_dict["lemma_nb_epochs"])
+                                        nb_lemmas = len(lemma_encoder.classes_),
+                                        nb_postags = len(pos_encoder.classes_),
+                                        dense_dims = 250,
+                                        )
+            for e in range(param_dict["lemma_nb_epochs"]):
+                print("-> epoch ", e+1, "...")
+                lemmatizer.fit({'left_input': left_X,
+                                          'token_input': tokens_X,
+                                          'right_input': right_X,
+                                          'lemma_output': lemma_labels_y,
+                                          'pos_output': pos_labels_y
+                                         },
+                                nb_epoch = 1,
+                                batch_size = BATCH_SIZE)
+                predictions = lemmatizer.predict({'left_input': left_X,
+                                          'token_input': tokens_X,
+                                          'right_input': right_X,
+                                         },
+                                batch_size = BATCH_SIZE)
+                pos_predictions = np_utils.categorical_probas_to_classes(predictions['pos_output'])
+                pos_accuracy = np_utils.accuracy(pos_predictions, train_pos_y)
+                print("\t - postags acc:\t{:.2%}".format(pos_accuracy))
+                lemma_predictions = np_utils.categorical_probas_to_classes(predictions['lemma_output'])
+                lemma_accuracy = np_utils.accuracy(lemma_predictions, train_lemmas_y)
+                print("\t - lemmas acc:\t{:.2%}".format(lemma_accuracy))
+            #lemmatizer.fit([left_X, tokens_X, right_X], labels_y, show_accuracy=True,
+            #                batch_size = BATCH_SIZE, nb_epoch = param_dict["lemma_nb_epochs"])
             #lemmatizer.fit(tokens_X, labels_y, show_accuracy=True,
             #                batch_size = 50, nb_epoch = param_dict["lemma_nb_epochs"])
 
