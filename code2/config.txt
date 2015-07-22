@@ -2,7 +2,8 @@
 
 [global]
 train_dir = ../data/uniform/annotated/crm-adelheid/train
-input_dir = ../data/uniform/annotated/crm-adelheid/dev
+dev_dir = ../data/uniform/annotated/crm-adelheid/test
+test_dir = ../data/uniform/annotated/crm-adelheid/test
 output_dir = /home/mike/GitRepos/Midas/data/uniform/annotated/cg-lit/silver
 model_name = first_model
 mode = train
@@ -21,7 +22,7 @@ pos_nb_left_tokens = 2
 pos_left_char_len = 12
 pos_nb_right_tokens = 2
 pos_right_char_len = 12
-pos_nb_epochs = 5
+pos_nb_epochs = 50
 pos_architecture = A
 
 [lemmatizer]

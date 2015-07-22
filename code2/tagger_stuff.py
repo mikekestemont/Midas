@@ -1,12 +1,12 @@
 import numpy as np
 
-from utils import get_char_vector_dict, encode_labels, vectorize_charseq
+from utils import get_char_vector_dict, vectorize_charseq
 
 from keras.preprocessing import sequence
 from keras.utils import np_utils
 from keras.optimizers import Adagrad
 from keras.models import Sequential, Graph
-from keras.layers.core import Dense, Dropout, Activation, Flatten, Merge
+from keras.layers.core import Dense, Dropout, Activation, Flatten, Merge, MaxoutDense
 from keras.layers.embeddings import Embedding
 from keras.layers.recurrent import LSTM, GRU
 from keras.layers.convolutional import Convolution1D, MaxPooling1D
@@ -47,8 +47,135 @@ def vectorize(tokens, std_token_len,
 
     return left_X, tokens_X, right_X, char_vector_dict
 
+def build_lemmatizer_new(nb_filters,
+                    std_token_len,
+                    left_char_len,
+                    right_char_len,
+                    filter_length,
+                    char_vector_dict,
+                    nb_labels,
+                    dense_dims):
+    m = Graph()
+
+    # specify inputs:
+    #m.add_input(name='left_input', ndim=3)
+    m.add_input(name='token_input', ndim=3)
+    #m.add_input(name='right_input', ndim=3)
+
+    # add left context nodes:
+    """
+    m.add_node(Convolution1D(input_dim=len(char_vector_dict),
+                            nb_filter=nb_filters,
+                            filter_length=filter_length,
+                            activation="relu",
+                            border_mode="valid",
+                            subsample_length=1), 
+                   name="left_conv1", input='left_input')
+    #m.add_node(Convolution1D(input_dim=nb_filters,
+    #                        nb_filter=nb_filters/2,
+    #                        filter_length=2,
+    #                        activation="relu",
+    #                        border_mode="valid",
+    #                        subsample_length=1), 
+    #               name="left_conv2", input='left_conv1')
+    #m.add_node(MaxPooling1D(pool_length=2),
+    #               name="left_pool1", input="left_conv1")
+    #m.add_node(LSTM(nb_filters/2, dense_dims),
+    #               name='left_lstm1', input='left_conv1')
+    m.add_node(LSTM(nb_filters, dense_dims),
+                   name='left_lstm1', input='left_conv1')
+    #m.add_node(Flatten(),
+    #               name="left_flatten1", input="left_pool1")
+    #output_size =  nb_filters * (((left_char_len-filter_length)/1)+1)/2
+    #m.add_node(Dense(output_size, dense_dims),
+    #               name="left_lstm1", input="left_flatten1")
+    m.add_node(Dropout(0.5),
+                   name='left_dropout1', input='left_lstm1')
+    m.add_node(Activation('relu'),
+                   name='left_relu1', input='left_dropout1')
+
+    # add right context nodes:
+    
+    m.add_node(Convolution1D(input_dim=len(char_vector_dict),
+                            nb_filter=nb_filters,
+                            filter_length=filter_length,
+                            activation="relu",
+                            border_mode="valid",
+                            subsample_length=1), 
+                   name="right_conv1", input='right_input')
+    #m.add_node(Convolution1D(input_dim=nb_filters,
+    #                        nb_filter=nb_filters/2,
+    #                        filter_length=2,
+    #                        activation="relu",
+    #                        border_mode="valid",
+    #                        subsample_length=1), 
+    #               name="right_conv2", input='right_conv1')
+    #m.add_node(MaxPooling1D(pool_length=2),
+    #               name="right_pool1", input="right_conv1")
+    m.add_node(LSTM(nb_filters, dense_dims),
+                   name='right_lstm1', input='right_conv1')
+    #m.add_node(Flatten(),
+    #               name="right_flatten1", input="right_pool1")
+    #output_size =  nb_filters * (((right_char_len-filter_length)/1)+1)/2
+    #m.add_node(Dense(output_size, dense_dims),
+    #               name="right_lstm1", input="right_flatten1")
+    m.add_node(Dropout(0.5),
+                   name='right_dropout1', input='right_lstm1')
+    m.add_node(Activation('relu'),
+                   name='right_relu1', input='right_dropout1')
+    """
+
+    # add target token nodes:
+    m.add_node(Convolution1D(input_dim=len(char_vector_dict),
+                            nb_filter=nb_filters,
+                            filter_length=filter_length,
+                            activation="relu",
+                            border_mode="valid",
+                            subsample_length=1), 
+                   name="token_conv1", input='token_input')
+    m.add_node(Convolution1D(input_dim=nb_filters,
+                            nb_filter=nb_filters,
+                            filter_length=filter_length,
+                            activation="relu",
+                            border_mode="valid",
+                            subsample_length=1), 
+                   name="token_conv2", input='token_conv1')
+    #m.add_node(MaxPooling1D(pool_length=2),
+    #               name="token_pool1", input="token_conv1")
+    m.add_node(Flatten(),
+                   name="token_flatten1", input="token_conv2")
+    m.add_node(Dropout(0.5),
+                   name="token_dropout1", input="token_flatten1")
+    output_size = nb_filters * (((std_token_len - filter_length))+1)/2 # for single conv layer with pooling:
+    # for double conv layer (without pooling):
+    output_size = nb_filters * (std_token_len - filter_length - 1)
+    m.add_node(Dense(output_size, dense_dims),
+                   name="token_dense1", input="token_dropout1")
+    m.add_node(Dropout(0.5),
+                   name="token_dropout2", input="token_dense1")
+    m.add_node(Activation('relu'),
+                   name='token_relu1', input='token_dropout2')
+
+    # add lemma nodes:
+    m.add_node(Dense(dense_dims, nb_labels),
+                   name='label_dense',
+                   input='token_relu1')
+                   #inputs=['token_relu1'],#'left_relu1', , 'right_relu1'],
+                   #merge_mode='concat')
+    m.add_node(Activation('softmax'),
+                   name='label_softmax', input='label_dense')
+    m.add_output(name='label_output', input='label_softmax')
+
+    m.compile(optimizer='adagrad',
+              loss={'label_output':'categorical_crossentropy'})
+
+    return m
+
+
 def build_lemmatizer(nb_filters,
                     std_token_len,
+                    left_char_len,
+                    right_char_len,
                     filter_length,
                     char_vector_dict,
                     nb_lemmas,
@@ -71,8 +198,13 @@ def build_lemmatizer(nb_filters,
                    name="left_conv1", input='left_input')
     m.add_node(MaxPooling1D(pool_length=2),
                    name="left_pool1", input="left_conv1")
-    m.add_node(LSTM(nb_filters/2, dense_dims),
-                   name='left_lstm1', input='left_pool1')
+    #m.add_node(LSTM(nb_filters/2, dense_dims),
+    #               name='left_lstm1', input='left_pool1')
+    m.add_node(Flatten(),
+                   name="left_flatten1", input="left_pool1")
+    output_size =  nb_filters * (((left_char_len-filter_length)/1)+1)/2
+    m.add_node(Dense(output_size, dense_dims),
+                   name="left_lstm1", input="left_flatten1")
     m.add_node(Dropout(0.5),
                    name='left_dropout1', input='left_lstm1')
     m.add_node(Activation('relu'),
@@ -88,8 +220,13 @@ def build_lemmatizer(nb_filters,
                    name="right_conv1", input='right_input')
     m.add_node(MaxPooling1D(pool_length=2),
                    name="right_pool1", input="right_conv1")
-    m.add_node(LSTM(nb_filters/2, dense_dims),
-                   name='right_lstm1', input='right_pool1')
+    #m.add_node(LSTM(nb_filters/2, dense_dims),
+    #               name='right_lstm1', input='right_pool1')
+    m.add_node(Flatten(),
+                   name="right_flatten1", input="right_pool1")
+    output_size =  nb_filters * (((right_char_len-filter_length)/1)+1)/2
+    m.add_node(Dense(output_size, dense_dims),
+                   name="right_lstm1", input="right_flatten1")
     m.add_node(Dropout(0.5),
                    name='right_dropout1', input='right_lstm1')
     m.add_node(Activation('relu'),
@@ -127,12 +264,25 @@ def build_lemmatizer(nb_filters,
     m.add_output(name='lemma_output', input='lemma_softmax')
 
     # add postag nodes:
-    m.add_node(Dense(3*dense_dims, nb_postags),
-                   name='pos_dense',
-                   inputs=['left_relu1', 'token_dropout2', 'right_relu1'],
+    # note: we add the relu-outcome of the lemma_dense to the pos module!
+    # first we apply a relu:
+    m.add_node(Activation('relu'), name='pos_relu1', input='lemma_dense') # don't take the softmax!
+    m.add_node(Dropout(0.5), name="pos_dropout1", input="pos_relu1")
+    # we add a hidden layer:
+    m.add_node(Dense((3*dense_dims)+nb_lemmas, dense_dims),
+                   name='pos_dense1',
+                   inputs=['left_relu1', 'token_dropout2', 'right_relu1', 'pos_dropout1'],
+                   merge_mode='concat')
+
+    m.add_node(Activation('relu'), name='pos_relu2', input='pos_dense1') # don't take the softmax!
+    m.add_node(Dropout(0.5), name="pos_dropout2", input="pos_relu2")
+    # we add the output layer:
+    m.add_node(Dense(dense_dims, nb_postags),
+                   name='pos_dense2',
+                   input='pos_dropout2',
                    merge_mode='concat')
     m.add_node(Activation('softmax'),
-                   name='pos_softmax', input='pos_dense')
+                   name='pos_softmax', input='pos_dense2')
     m.add_output(name='pos_output', input='pos_softmax')
     
 

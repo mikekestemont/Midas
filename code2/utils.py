@@ -1,7 +1,5 @@
 import numpy as np
 
-from sklearn.preprocessing import LabelEncoder
-
 from keras.utils import np_utils
 
 def get_char_vector_dict(tokens):
@@ -32,8 +30,3 @@ def vectorize_charseq(seq, char_vector_dict, std_seq_len):
         seq_X.append(filler)
 
     return np.vstack(seq_X)
-
-def encode_labels(labels):
-    label_encoder = LabelEncoder()
-    labels_y = label_encoder.fit_transform(labels)
-    return label_encoder, labels_y
